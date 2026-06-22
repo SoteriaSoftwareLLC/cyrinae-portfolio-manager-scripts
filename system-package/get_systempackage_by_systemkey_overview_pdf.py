@@ -946,12 +946,6 @@ def write_pdf_with_reportlab(output_path: Path, report_data: dict[str, str]) -> 
         paragraph._toc_anchor = anchor
         return paragraph
 
-    def draw_page_number(canvas, document) -> None:
-        canvas.saveState()
-        canvas.setFont("Helvetica", 9)
-        canvas.drawRightString(letter[0] - document.rightMargin, 24, f"Page {document.page}")
-        canvas.restoreState()
-
     def anchored_normal(text: str, anchor: str):
         paragraph = Paragraph(f'<a name="{html.escape(anchor, quote=True)}"/>{text}', styles["Normal"])
         paragraph._toc_anchor = anchor
@@ -1494,7 +1488,7 @@ def write_pdf_with_reportlab(output_path: Path, report_data: dict[str, str]) -> 
             story[story_index] = updated_contents_table
             break
     document = SectionPageNumberDocTemplate(str(output_path), **document_options)
-    document.build(story, onFirstPage=draw_page_number, onLaterPages=draw_page_number)
+    document.build(story)
     return True
 
 
@@ -1517,18 +1511,6 @@ def make_text_page(lines: list[str], font_size: int = 12, line_backgrounds: dict
         y_position -= 18
     content.append("ET")
     return "\n".join(content)
-
-
-def add_text_page_number(page_stream: str, page_number: int) -> str:
-    return "\n".join(
-        [
-            page_stream,
-            "BT",
-            "/F1 9 Tf",
-            f"1 0 0 1 530 24 Tm ({escape_pdf_text(f'Page {page_number}')}) Tj",
-            "ET",
-        ]
-    )
 
 
 def make_text_pages(
@@ -1815,10 +1797,7 @@ def build_fallback_pages(report_data: dict[str, str]) -> list[str]:
 
 
 def write_minimal_pdf(output_path: Path, report_data: dict[str, str]) -> None:
-    page_streams = [
-        add_text_page_number(page_stream, page_number)
-        for page_number, page_stream in enumerate(build_fallback_pages(report_data), start=1)
-    ]
+    page_streams = build_fallback_pages(report_data)
     objects = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"",

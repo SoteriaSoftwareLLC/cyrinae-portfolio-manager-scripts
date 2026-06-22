@@ -514,12 +514,6 @@ def write_pdf_with_reportlab(output_path: Path, report_data: dict) -> bool:
         paragraph._toc_anchor = anchor
         return paragraph
 
-    def draw_page_number(canvas, document) -> None:
-        canvas.saveState()
-        canvas.setFont("Helvetica", 9)
-        canvas.drawRightString(document.pagesize[0] - document.rightMargin, 24, f"Page {document.page}")
-        canvas.restoreState()
-
     def contents_link(title: str, anchor: str):
         return Paragraph(f'<a href="#{html.escape(anchor, quote=True)}" color="blue">{html.escape(title)}</a>', contents_link_style)
 
@@ -895,7 +889,7 @@ def write_pdf_with_reportlab(output_path: Path, report_data: dict) -> bool:
             story[story_index] = updated_contents_table
             break
     document = SectionPageNumberDocTemplate(str(output_path), **document_options)
-    document.build(story, onFirstPage=draw_page_number, onLaterPages=draw_page_number)
+    document.build(story)
     return True
 
 
@@ -912,18 +906,6 @@ def make_text_page(lines: list[str], font_size: int = 12) -> str:
         y_position -= line_height
     content.append("ET")
     return "\n".join(content)
-
-
-def add_text_page_number(page_stream: str, page_number: int) -> str:
-    return "\n".join(
-        [
-            page_stream,
-            "BT",
-            "/F1 9 Tf",
-            f"1 0 0 1 710 24 Tm ({escape_pdf_text(f'Page {page_number}')}) Tj",
-            "ET",
-        ]
-    )
 
 
 def write_minimal_pdf(output_path: Path, report_data: dict) -> None:
@@ -959,7 +941,6 @@ def write_minimal_pdf(output_path: Path, report_data: dict) -> None:
         lines.append("")
     page_streams = [make_text_page(cover_lines, font_size=14)]
     page_streams.extend(make_text_page(lines[index : index + 37]) for index in range(0, len(lines), 37))
-    page_streams = [add_text_page_number(page_stream, page_number) for page_number, page_stream in enumerate(page_streams, start=1)]
     objects = [b"<< /Type /Catalog /Pages 2 0 R >>", b"", b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
     page_object_numbers = []
     for page_stream in page_streams:

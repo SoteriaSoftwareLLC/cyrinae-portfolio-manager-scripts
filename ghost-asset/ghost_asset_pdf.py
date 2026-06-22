@@ -853,6 +853,35 @@ def pdf_table(rows: list[list[str]], column_widths: list[int], styles, table_sty
 	return table
 
 
+def build_cover_hardware_section(summary: dict[str, object], styles, table_style):
+	from reportlab.platypus import Paragraph, Spacer  # pyright: ignore[reportMissingModuleSource]
+
+	total_count = int(summary.get("total_count", 0) or 0)
+	display_count = int(summary.get("display_count", 0) or 0)
+	devices = summary.get("devices", [])
+	table_rows = [["Hardware Device"]]
+	if isinstance(devices, list) and devices:
+		for device in devices:
+			if isinstance(device, dict):
+				table_rows.append([safe_text(device.get("asset", "Unknown"))])
+	else:
+		table_rows.append(["No hardware devices were found."])
+	section = [
+		Spacer(1, 12),
+		Paragraph("Total Number of Hardware Devices", styles["LeftHeading2"]),
+		Spacer(1, 6),
+		pdf_table(table_rows, [300], styles, table_style),
+	]
+	if total_count > display_count:
+		section.extend(
+			[
+				Spacer(1, 6),
+				Paragraph(f"Showing first {display_count} of {total_count} hardware devices.", styles["Normal"]),
+			]
+		)
+	return section
+
+
 def build_evidence_table(rows: list[dict[str, str]], styles, table_style):
 	from reportlab.platypus import Spacer  # pyright: ignore[reportMissingModuleSource]
 
@@ -887,7 +916,7 @@ def write_pdf_with_reportlab(output_path: Path, report_data: dict[str, object]) 
 		from reportlab.lib import colors  # pyright: ignore[reportMissingModuleSource]
 		from reportlab.lib.pagesizes import letter  # pyright: ignore[reportMissingModuleSource]
 		from reportlab.lib.styles import getSampleStyleSheet  # pyright: ignore[reportMissingModuleSource]
-		from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, TableStyle  # pyright: ignore[reportMissingModuleSource]
+		from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, TableStyle  # pyright: ignore[reportMissingModuleSource]
 	except ImportError:
 		return False
 
@@ -914,10 +943,6 @@ def write_pdf_with_reportlab(output_path: Path, report_data: dict[str, object]) 
 	analysis = report_data["ghost_asset_analysis"]
 	if not isinstance(analysis, dict):
 		analysis = {}
-	hardware_summary = report_data.get("hardware_device_summary", {})
-	if not isinstance(hardware_summary, dict):
-		hardware_summary = {}
-	hardware_total_count = int(hardware_summary.get("total_count", 0) or 0)
 	document = SimpleDocTemplate(
 		str(output_path),
 		pagesize=letter,
@@ -926,13 +951,6 @@ def write_pdf_with_reportlab(output_path: Path, report_data: dict[str, object]) 
 		title=safe_text(report_data["report_title"]),
 		author="OpenRMF Professional External API Scripts",
 	)
-
-	def draw_page_number(canvas, document) -> None:
-		canvas.saveState()
-		canvas.setFont("Helvetica", 9)
-		canvas.drawRightString(document.pagesize[0] - document.rightMargin, 24, f"Page {document.page}")
-		canvas.restoreState()
-
 	story = [
 		Paragraph(html.escape(safe_text(report_data["report_title"])), styles["Title"]),
 		Spacer(1, 18),
@@ -940,17 +958,19 @@ def write_pdf_with_reportlab(output_path: Path, report_data: dict[str, object]) 
 		Paragraph(f"System Title: {html.escape(safe_text(report_data['system_title']))}", styles["Normal"]),
 		Paragraph(f"System Key: {html.escape(safe_text(report_data['system_key']))}", styles["Normal"]),
 		Paragraph(f"Description: {html.escape(safe_text(report_data['system_description']))}", styles["Normal"]),
-		Paragraph(f"Total Number of Hardware Devices: {hardware_total_count}", styles["Normal"]),
 	]
+	hardware_summary = report_data.get("hardware_device_summary", {})
+	if isinstance(hardware_summary, dict):
+		story.extend(build_cover_hardware_section(hardware_summary, styles, table_style))
 	story.extend(
 		[
-		Spacer(1, 18),
+		PageBreak(),
 		Paragraph("Ghost Asset Analysis", left_title_style),
 		Spacer(1, 14),
 		]
 	)
 	story.extend(build_evidence_table(analysis.get("evidence_rows", []), styles, table_style))
-	document.build(story, onFirstPage=draw_page_number, onLaterPages=draw_page_number)
+	document.build(story)
 	return True
 
 
@@ -968,18 +988,6 @@ def make_text_page(lines: list[str], font_size: int = 14) -> str:
 	return "\n".join(stream_lines)
 
 
-def add_text_page_number(page_stream: str, page_number: int) -> str:
-	return "\n".join(
-		[
-			page_stream,
-			"BT",
-			"/F1 9 Tf",
-			f"1 0 0 1 530 24 Tm ({escape_pdf_text(f'Page {page_number}')}) Tj",
-			"ET",
-		]
-	)
-
-
 def write_minimal_pdf(output_path: Path, report_data: dict[str, object]) -> None:
 	analysis = report_data["ghost_asset_analysis"]
 	if not isinstance(analysis, dict):
@@ -987,11 +995,21 @@ def write_minimal_pdf(output_path: Path, report_data: dict[str, object]) -> None
 	hardware_summary = report_data.get("hardware_device_summary", {})
 	if not isinstance(hardware_summary, dict):
 		hardware_summary = {}
-	hardware_total_count = int(hardware_summary.get("total_count", 0) or 0)
+	hardware_lines = [
+		"",
+		"Total Number of Hardware Devices",
+	]
+	devices = hardware_summary.get("devices", [])
+	if isinstance(devices, list) and devices:
+		for device in devices:
+			if isinstance(device, dict):
+				hardware_lines.append(truncated_text(f"{device.get('asset', 'Unknown')}", 88))
+	else:
+		hardware_lines.append("No hardware devices were found.")
+	if int(hardware_summary.get("total_count", 0) or 0) > int(hardware_summary.get("display_count", 0) or 0):
+		hardware_lines.append(f"Showing first {hardware_summary.get('display_count', 0)} of {hardware_summary.get('total_count', 0)} hardware devices.")
 	analysis_lines = build_fallback_analysis_lines(analysis)
-	first_page_analysis_lines = analysis_lines[:20]
-	remaining_analysis_lines = analysis_lines[20:]
-	analysis_page_chunks = [remaining_analysis_lines[index:index + 30] for index in range(0, len(remaining_analysis_lines), 30)]
+	analysis_page_chunks = [analysis_lines[index:index + 30] for index in range(0, len(analysis_lines), 30)] or [["Ghost Asset Analysis", "", "No correlated asset data found."]]
 	page_streams = [
 		make_text_page(
 			[
@@ -1001,15 +1019,12 @@ def write_minimal_pdf(output_path: Path, report_data: dict[str, object]) -> None
 				f"System Title: {report_data['system_title']}",
 				f"System Key: {report_data['system_key']}",
 				f"Description: {report_data['system_description']}",
-				f"Total Number of Hardware Devices: {hardware_total_count}",
-				"",
-				*first_page_analysis_lines,
+				*hardware_lines,
 			],
-			font_size=12,
+			font_size=14,
 		),
 	]
 	page_streams.extend(make_text_page(chunk, font_size=12) for chunk in analysis_page_chunks)
-	page_streams = [add_text_page_number(page_stream, page_number) for page_number, page_stream in enumerate(page_streams, start=1)]
 	objects = [
 		b"<< /Type /Catalog /Pages 2 0 R >>",
 		b"",

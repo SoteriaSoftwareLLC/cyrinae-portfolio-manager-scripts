@@ -470,13 +470,6 @@ def write_pdf_with_reportlab(output_path: Path, report_data: dict) -> bool:
 		leftMargin=36,
 		rightMargin=36,
 	)
-
-	def draw_page_number(canvas, document) -> None:
-		canvas.saveState()
-		canvas.setFont("Helvetica", 9)
-		canvas.drawRightString(letter[0] - document.rightMargin, 24, f"Page {document.page}")
-		canvas.restoreState()
-
 	story = [
 		Paragraph(html.escape(report_data["report_title"]), styles["Title"]),
 		Spacer(1, 18),
@@ -493,7 +486,7 @@ def write_pdf_with_reportlab(output_path: Path, report_data: dict) -> bool:
 		Spacer(1, 8),
 		settings_table,
 	]
-	document.build(story, onFirstPage=draw_page_number, onLaterPages=draw_page_number)
+	document.build(story)
 	return True
 
 
@@ -509,18 +502,6 @@ def make_text_page(lines: list[str], font_size: int = 12) -> str:
 		y_position -= 18
 	content.append("ET")
 	return "\n".join(content)
-
-
-def add_text_page_number(page_stream: str, page_number: int) -> str:
-	return "\n".join(
-		[
-			page_stream,
-			"BT",
-			"/F1 9 Tf",
-			f"1 0 0 1 530 24 Tm ({escape_pdf_text(f'Page {page_number}')}) Tj",
-			"ET",
-		]
-	)
 
 
 def write_minimal_pdf(output_path: Path, report_data: dict) -> None:
@@ -556,7 +537,6 @@ def write_minimal_pdf(output_path: Path, report_data: dict) -> None:
 		*[make_text_page(impact_lines[index:index + 36]) for index in range(0, len(impact_lines), 36)],
 		*[make_text_page(settings_lines[index:index + 36]) for index in range(0, len(settings_lines), 36)],
 	]
-	page_streams = [add_text_page_number(page_stream, page_number) for page_number, page_stream in enumerate(page_streams, start=1)]
 	objects = [
 		b"<< /Type /Catalog /Pages 2 0 R >>",
 		b"",
